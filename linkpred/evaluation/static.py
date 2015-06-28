@@ -1,11 +1,21 @@
-from ..util import log
+import logging
+import numpy as np
+
+from .scoresheet import BaseScoresheet
+
+log = logging.getLogger(__name__)
+
+__all__ = ["EvaluationSheet", "StaticEvaluation", "UndefinedError"]
+
+
+class UndefinedError(Exception):
+    """Raised when the method's result is undefined"""
 
 
 class StaticEvaluation(object):
-    """
-    Static evaluation of IR
-    """
-    def __init__(self, retrieved=[], relevant=[], universe=None):
+    """Static evaluation of IR"""
+
+    def __init__(self, retrieved=None, relevant=None, universe=None):
         """
         Initialize IR evaluation.
 
@@ -28,16 +38,16 @@ class StaticEvaluation(object):
             iterable of the relevant items
 
         universe : a list or set, an int or None
-            If universe is an iterable, it is interpreted as the set of all items
-            in the system.
-            If universe is an int, it is interpreted as the *number* of items in
-            the system. This allows for fewer checks but is more memory-efficient.
-            If universe is None, it is supposed to be unknown. This still allows for
-            some measures, including precision and recall, to be calculated.
+            If universe is an iterable, it is interpreted as the set of all
+            items in the system. If universe is an int, it is interpreted as
+            the *number* of items in the system. This allows for fewer checks
+            but is more memory-efficient. If universe is None, it is supposed
+            to be unknown. This still allows for some measures, including
+            precision and recall, to be calculated.
 
         """
-        retrieved = set(retrieved)
-        relevant = set(relevant)
+        retrieved = set(retrieved) if retrieved else set()
+        relevant = set(relevant) if relevant else set()
 
         self.fp = retrieved - relevant
         self.fn = relevant - retrieved
@@ -57,6 +67,7 @@ class StaticEvaluation(object):
             if not (retrieved <= universe and relevant <= universe):
                 raise ValueError("Retrieved and relevant should be "
                                  "subsets of universe.")
+            self.num_universe = len(universe)
             self.tn = universe - retrieved - relevant
             del universe
         self.update_counts()
@@ -73,6 +84,9 @@ class StaticEvaluation(object):
             self.num_tn = self.num_universe - self.num_fp \
                                             - self.num_fn - self.num_tp
             assert self.num_tn >= 0
+
+    def add_retrieved_item(self, item):
+        self.update_retrieved({item})
 
     def update_retrieved(self, new):
         new = set(new)
@@ -94,94 +108,134 @@ class StaticEvaluation(object):
         self.fn -= relevant_new
         self.update_counts()
 
+
+def ensure_defined(func):
+    def _wrapper(self, *args, **kwargs):
+        if self.data.shape[0] == 0:
+            raise UndefinedError("Measure is undefined if there are no "
+                                 "relevant or retrieved items")
+        return func(self, *args, **kwargs)
+    return _wrapper
+
+
+def ensure_universe_known(func):
+    def _wrapper(self, *args, **kwargs):
+        # If tn is -1 somewhere, we know that universe is not defined.
+        if np.where(self.tn == -1, True, False).any():
+            raise UndefinedError("Measure is undefined if universe is unknown")
+        return func(self, *args, **kwargs)
+    return _wrapper
+
+
+class EvaluationSheet(object):
+
+    def __init__(self, data=None, relevant=None, universe=None):
+        if isinstance(data, BaseScoresheet):
+            if relevant is None:
+                raise TypeError("Cannot create evaluation sheet from "
+                                "scoresheet without set of relevant items")
+            log.debug("Counting for evaluation sheet...")
+            static = StaticEvaluation(relevant=relevant, universe=universe)
+            # Initialize empty array of right dimensions
+            # 4 columns for tp, fp, fn, tn
+            self.data = np.empty((len(data), 4))
+            for i, (prediction, _) in enumerate(data.ranked_items()):
+                static.add_retrieved_item(prediction)
+                self.data[i] = (static.num_tp, static.num_fp, static.num_fn,
+                                static.num_tn)
+            log.debug("Finished counting evaluation sheet...")
+        elif isinstance(data, np.ndarray):
+            self.data = data
+        else:
+            raise TypeError("Cannot create evaluation sheet from "
+                            "unknown data type {}".format(type(data)))
+
+    def __len__(self):
+        return len(self.data)
+
+    @property
+    def tp(self):
+        return self.data[:, 0]
+
+    @property
+    def fp(self):
+        return self.data[:, 1]
+
+    @property
+    def fn(self):
+        return self.data[:, 2]
+
+    @property
+    def tn(self):
+        return self.data[:, 3]
+
+    def to_file(self, fname, *args, **kwargs):
+        np.savetxt(fname, self.data, *args, **kwargs)
+
+    @classmethod
+    def from_file(cls, fname, *args, **kwargs):
+        data = np.loadtxt(fname, *args, **kwargs)
+        return cls(data)
+
+    @ensure_defined
     def precision(self):
-        try:
-            return float(self.num_tp) / (self.num_tp + self.num_fp)
-        except ZeroDivisionError:
-            log.logger.warning("Division by 0 in calculating precision: "
-                               "tp = %d, fp = %d, fn = %d, tn = %d" %
-                               (self.num_tp, self.num_fp, self.num_tn, self.num_tn))
-            return 0.0
+        return self.tp / (self.tp + self.fp)
 
+    @ensure_defined
     def recall(self):
-        try:
-            return float(self.num_tp) / (self.num_tp + self.num_fn)
-        except ZeroDivisionError:
-            log.logger.warning("Division by 0 in calculating recall: "
-                               "tp = %d, fp = %d, fn = %d, tn = %d" %
-                               (self.num_tp, self.num_fp, self.num_tn, self.num_tn))
-            return 0.0
+        return self.tp / (self.tp + self.fn)
 
+    @ensure_defined
+    @ensure_universe_known
     def fallout(self):
-        if self.num_tn == -1:
-            raise ValueError(
-                "Cannot determine fallout if universe is undefined")
-        try:
-            return float(self.num_fp) / (self.num_fp + self.num_tn)
-        except ZeroDivisionError:
-            log.logger.warning("Division by 0 in calculating fallout: "
-                               "tp = %d, fp = %d, fn = %d, tn = %d" %
-                               (self.num_tp, self.num_fp, self.num_tn, self.num_tn))
-            return 0.0
+        return self.fp / (self.fp + self.tn)
 
+    @ensure_defined
+    @ensure_universe_known
     def miss(self):
-        if self.num_tn == -1:
-            raise ValueError("Cannot determine miss if universe is undefined")
-        try:
-            return float(self.num_fn) / (self.num_fn + self.num_tn)
-        except ZeroDivisionError:
-            log.logger.warning("Division by 0 in calculating miss: "
-                               "tp = %d, fp = %d, fn = %d, tn = %d" %
-                               (self.num_tp, self.num_fp, self.num_tn, self.num_tn))
-            return 0.0
+        return self.fn / (self.fn + self.tn)
 
+    @ensure_defined
+    @ensure_universe_known
     def accuracy(self):
-        """Compute accuracy = |correct| / |universe|
+        return (self.tp + self.tn) / self.data.sum(axis=1)
 
-        Not appropriate for IR, since over 99.9% is nonrelevant. A system that
-        labels everything as nonrelevant, would still have high accuracy.
-        """
-        if self.num_tn == -1:
-            raise ValueError(
-                "Cannot determine accuracy if universe is undefined")
-        try:
-            return float(self.num_tp + self.num_tn) / \
-                (self.num_tp + self.num_fp + self.num_tn + self.num_fn)
-        except ZeroDivisionError:
-            log.logger.warning("Division by 0 in calculating accuracy: "
-                               "tp = %d, fp = %d, fn = %d, tn = %d" %
-                               (self.num_tp, self.num_fp, self.num_tn, self.num_tn))
-            return 0.0
-
+    @ensure_defined
     def f_score(self, beta=1):
-        """Compute F-measure or F-score.
+        r"""Compute F-score
 
-        F is the weighted harmonic mean of recall R and precision P:
+        F is the harmonic mean of precision and recall:
+
             F = 2PR / (P + R)
-        In this case, R and P are evenly weighted. More generally:
-            F = (1 + b^2)PR / (b^2 * P + R)
-        If beta = 2, R is weighted twice as much as P.
-        If beta = 0.5, R is weighted half as much as P.
+
+        We use the generalized form:
+
+            F = (beta^2 + 1)PR / (beta^2 P + R)
+              = (beta^2 + 1)tp / ((beta^2 + 1)tp + beta^2fn + fp)
+
+        The parameter beta allows assigning more weight to precision or recall.
+        If beta > 1, recall is emphasized over precision. If beta < 1,
+        precision is emphasized over recall.
 
         """
-        p = self.precision()
-        r = self.recall()
-        beta_squared = beta ** 2
-        try:
-            return float((1 + beta_squared) * p * r) / (beta_squared * p + r)
-        except ZeroDivisionError:
-            return 0.0
+        beta2 = beta ** 2
+        beta2_tp = (beta2 + 1) * self.tp
+        return beta2_tp / (beta2_tp + beta2 * self.fn + self.fp)
 
+    @ensure_defined
+    @ensure_universe_known
     def generality(self):
-        """Compute generality = |relevant| / |universe|"""
-        if self.num_tn == -1:
-            raise ValueError(
-                "Cannot determine generality if universe is undefined")
-        try:
-            return float(self.num_tp + self.num_fn) / \
-                (self.num_tp + self.num_fp + self.num_tn + self.num_fn)
-        except ZeroDivisionError:
-            log.logger.warning("Division by 0 in calculating generality: "
-                               "tp = %d, fp = %d, fn = %d, tn = %d" %
-                               (self.num_tp, self.num_fp, self.num_tn, self.num_tn))
-            return 0.0
+        """Compute generality of the query
+
+        Generality G is defined as:
+
+            G = (tp + fn) / (tp + fn + fp + tp)
+
+        Returns
+        -------
+
+        G : float
+
+        """
+        # Return single number: this is constant wrt what is retrieved
+        return ((self.tp + self.fn) / self.data.sum(axis=1))[0]

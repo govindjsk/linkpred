@@ -1,70 +1,32 @@
 """linkpred main module"""
+from __future__ import unicode_literals
+import logging
 import networkx as nx
 import os
+import smokesignal
 
 from . import predictors
-from .evaluation import Pair, signals, listeners
+from .evaluation import Pair, listeners as l
 from .exceptions import LinkPredError
-from .util import log
+from .preprocess import (without_low_degree_nodes, without_uncommon_nodes,
+                         without_selfloops)
 
-__all__ = ["LinkPred", "filter_low_degree_nodes", "read_network"]
+log = logging.getLogger(__name__)
 
-
-def filter_low_degree_nodes(networks, minimum=1, eligible=None):
-    """Only retain nodes with minimum degree in all networks
-
-    This also removes nodes that are not present in all networks.
-    Changes are made in place.
-
-    Arguments
-    ---------
-    networks : a list or iterable of networkx.Graph instances
-
-    minimum : int
-        minimum node degree
-
-    """
-    def low_degree(G, threshold):
-        """Get eligible nodes whose degree is below the threshold"""
-        if eligible is None:
-            return [n for n, d in G.degree_iter() if d < threshold]
-        else:
-            return [n for n, d in G.degree_iter()
-                    if d < threshold and G.node[n][eligible]]
-
-    def items_outside(G, nbunch):
-        """Get eligible nodes outside nbunch"""
-        if eligible is None:
-            return [n for n in G.nodes_iter() if n not in nbunch]
-        else:
-            return [n for n in G.nodes_iter()
-                    if G.node[n][eligible] and n not in nbunch]
-
-    log.logger.info("Filtering low degree nodes...")
-    for G in networks:
-        to_remove = low_degree(G, minimum)
-        G.remove_nodes_from(to_remove)
-        log.logger.info("Removed %d nodes "
-                        "(degree < %d)" % (len(to_remove), minimum))
-    common = set.intersection(*[set(G) for G in networks])
-    for G in networks:
-        to_remove = items_outside(G, common)
-        G.remove_nodes_from(to_remove)
-        log.logger.info("Removed %d nodes (not common)" % len(to_remove))
-    log.logger.info("Finished filtering low degree nodes.")
+__all__ = ["LinkPred", "read_network"]
 
 
-def for_comparison(G, exclude=[]):
+def for_comparison(G, exclude=None):
     """Return the result in a format, suitable for comparison.
 
     In practice this means we return it as a set of Pairs.
 
     """
-    exclude = set(Pair(u, v) for u, v in exclude)
+    exclude = set(Pair(u, v) for u, v in exclude) if exclude else set()
     return set(Pair(u, v) for u, v in G.edges_iter()) - exclude
 
 
-def pretty_print(name, params={}):
+def pretty_print(name, params=None):
     """Pretty print a predictor name
 
     Arguments
@@ -72,7 +34,7 @@ def pretty_print(name, params={}):
     name : string
         predictor name
 
-    params : dict
+    params : dict or None
         dictionary of parameter name -> value
 
     """
@@ -80,11 +42,23 @@ def pretty_print(name, params={}):
         return name
 
     pretty_params = ", ".join("%s = %s" % (k, str(v))
-                              for k, v in params.iteritems())
+                              for k, v in params.items())
     return "%s (%s)" % (name, pretty_params)
 
 
-FILETYPE_READERS = {'.net': nx.read_pajek,
+def _read_pajek(*args, **kwargs):
+    """Read Pajek file and make sure that we get an nx.Graph or nx.DiGraph"""
+    G = nx.read_pajek(*args, **kwargs)
+    edges = G.edges()
+    if len(set(edges)) < len(edges):  # multiple edges
+        log.warning("Network contains multiple edges. These will be ignored.")
+    if G.is_directed():
+        return nx.DiGraph(G)
+    else:
+        return nx.Graph(G)
+
+
+FILETYPE_READERS = {'.net': _read_pajek,
                     '.gml': nx.read_gml,
                     '.graphml': nx.read_graphml,
                     '.gexf': nx.read_gexf,
@@ -93,7 +67,7 @@ FILETYPE_READERS = {'.net': nx.read_pajek,
 
 
 def read_network(fh):
-    """Read the network file and return as networkx.Graph
+    """Read the network file and return as nx.Graph or nx.DiGraph
 
     Arguments
     ---------
@@ -102,22 +76,26 @@ def read_network(fh):
 
     """
     if nx.utils.is_string_like(fh):
-        fh = open(fh)
+        fname = fh
+    else:
+        # We assume that fh is a file handle
+        fname = fh.name
 
-    fname = fh.name
     ext = os.path.splitext(fname.lower())[1]
     try:
         read = FILETYPE_READERS[ext]
+        log.info("Reading file '%s'...", fname)
+        network = read(fh)
+        log.info("Successfully read file.")
     except KeyError:
-        raise LinkPredError("File '%s' is of an unknown type" % fname)
+        raise LinkPredError("File '%s' is of an unknown type. Known types "
+                            "are: %s.", fname, ", ".join(FILETYPE_READERS))
 
-    log.logger.info("Reading file '%s'..." % fname)
-    network = read(fname)
-    log.logger.info("Successfully read file.")
     return network
 
 
 class LinkPred(object):
+
     """linkpred main object
 
     LinkPred stores all configuration and provides a high-level interface to
@@ -125,7 +103,7 @@ class LinkPred(object):
 
     """
 
-    def __init__(self, config={}):
+    def __init__(self, config=None):
         # default config
         self.config = {
             'chart_filetype': 'pdf',
@@ -133,52 +111,109 @@ class LinkPred(object):
             'interpolation':  False,
             'label':          '',
             'min_degree':     1,
-            'only_new':       False,
+            'exclude':        'old',
             'output':         ['recall-precision'],
             'predictors':     [],
-            'steps':          1,
             'test-file':      None,
             'training-file':  None
         }
-        self.config.update(config)
-        log.logger.debug(u"Config: %s" % unicode(config))
+        if config:
+            self.config.update(config)
+        log.debug("Config: %s", self.config)
 
         if not self.config['predictors']:
             raise LinkPredError("No predictor specified. Aborting...")
 
         self.label = self.config['label'] or \
-            os.path.splitext(self.config['training-file'].name)[0]
+            os.path.splitext(self.config['training-file'])[0]
         self.training = self.network('training-file')
         self.test = self.network('test-file')
         self.evaluator = None
+        self.listeners = []
 
     @property
     def excluded(self):
         """Get set of links that should not be predicted"""
-        return set(self.training.edges_iter()) \
-            if self.config['only_new'] else set()
+        exclude = self.config['exclude']
+        if not exclude:
+            return set()  # No nodes are excluded
+        elif exclude == 'old':
+            return set(self.training.edges_iter())
+        elif exclude == 'new':
+            return set(nx.non_edges(self.training))
+        raise LinkPredError("Value '{}' for exclude is unexpected. Use either "
+                            "'old', 'new' or empty string '' (for no "
+                            "exclusions)".format(exclude))
 
     def network(self, key):
         """Get network for given key"""
         try:
-            return read_network(self.config[key])
-        except (KeyError, AttributeError):
+            network_file = self.config[key]
+        except KeyError:
             pass
+        if network_file:
+            return read_network(network_file)
 
     def preprocess(self):
         """Preprocess all networks according to configuration"""
-        networks = [self.training]
+
+        log.info("Starting preprocessing...")
+
+        preprocessed = lambda G: without_low_degree_nodes(
+            without_selfloops(G), minimum=self.config['min_degree'])
+
         if self.test:
-            networks.append(self.test)
+            networks = [preprocessed(G) for G in (self.training, self.test)]
+            self.training, self.test = without_uncommon_nodes(networks)
+        else:  # Only a training network
+            self.training = preprocessed(self.training)
 
-        for G in networks:
-            loops = G.selfloop_edges()
-            if loops:
-                log.logger.warning("Network contains %d self-loops. "
-                                   "Removing..." % len(loops))
-                G.remove_edges_from(loops)
+        log.info("Finished preprocessing.")
 
-        filter_low_degree_nodes(networks, minimum=self.config['min_degree'])
+    def setup_output(self):
+        """Configure listeners"""
+        filetype = self.config['chart_filetype']
+        interpolation = self.config['interpolation']
+
+        listeners = {
+            'cache-predictions': (
+                l.CachePredictionListener, False, []),
+            'recall-precision': (
+                l.RecallPrecisionPlotter, True, [self.label, filetype,
+                                                 interpolation]),
+            'f-score': (
+                l.FScorePlotter, True, [self.label, filetype,
+                                        "# predictions"]),
+            'roc': (
+                l.ROCPlotter, True, [self.label, filetype]),
+            'fmax': (
+                l.FMaxListener, True, [self.label]),
+            'cache-evaluations': (
+                l.CacheEvaluationListener, True, [])
+        }
+
+        for output in self.config['output']:
+            name = output.lower()
+            listener, evaluating, args = listeners[name]
+
+            if evaluating:
+                if not self.test:
+                    raise LinkPredError("Cannot evaluate (%s) without "
+                                        "test network" % output)
+
+                # Set up an 'evaluator': a listener that routes predictions
+                # and turns them into evaluations
+                if not self.evaluator:
+                    test_set = for_comparison(self.test, exclude=self.excluded)
+                    n = len(self.test)
+                    # Universe = all possible edges, except for the ones that
+                    # we no longer consider because they're excluded
+                    num_universe = n * (n - 1) / 2 - len(self.excluded)
+                    self.evaluator = l.EvaluatingListener(
+                        relevant=test_set, universe=num_universe)
+
+            self.listeners.append(listener(*args))
+            log.debug("Added listener for '%s'", output)
 
     def do_predict_all(self):
         """Generator that yields predictions based on training network
@@ -197,12 +232,12 @@ class LinkPred(object):
             label = predictor_profile.get('displayname',
                                           pretty_print(name, params))
 
-            log.logger.info("Executing %s..." % label)
+            log.info("Executing %s...", label)
             predictor = predictor_class(self.training,
                                         eligible=self.config['eligible'],
-                                        only_new=self.config['only_new'])
+                                        excluded=self.excluded)
             scoresheet = predictor.predict(**params)
-            log.logger.info("Finished executing %s." % label)
+            log.info("Finished executing %s.", label)
 
             # XXX TODO Do we need label?
             yield label, scoresheet
@@ -220,74 +255,15 @@ class LinkPred(object):
     def process_predictions(self):
         """Process (evaluate, log...) all predictions according to config"""
 
-        filetype = self.config['chart_filetype']
-        interpolation = self.config['interpolation']
-        steps = self.config['steps']
-
-        prediction_listeners = {
-            'cache-predictions': listeners.CachePredictionListener()
-        }
-        evaluation_listeners = {
-            'recall-precision': listeners.RecallPrecisionPlotter(
-                self.label, filetype=filetype, interpolation=interpolation),
-            'f-score': listeners.FScorePlotter(self.label, filetype=filetype,
-                                               xlabel="# predictions",
-                                               steps=steps),
-            'roc': listeners.ROCPlotter(self.label, filetype=filetype),
-            'fmax': listeners.FMaxListener(self.label),
-            'cache-evaluations': listeners.CacheEvaluationListener()
-        }
-
-        for output in self.config['output']:
-            name = output.lower()
-            if name in evaluation_listeners:
-                # We're evaluating!
-                listener = evaluation_listeners[name]
-                signals.new_evaluation.connect(listener.on_new_evaluation)
-
-                if not self.test:
-                    raise LinkPredError("Cannot evaluate (%s) without "
-                                        "test network" % output)
-
-                test_set = for_comparison(self.test, exclude=self.excluded)
-                nnodes = len(self.test)
-                # Universe = all possible edges, except for the ones that we no
-                # longer consider (because they're already in the training
-                # network)
-                num_universe = nnodes * (nnodes - 1) / 2 - len(self.excluded)
-
-                if not self.evaluator:
-                    self.evaluator = listeners.EvaluatingListener(
-                        relevant=test_set, universe=num_universe)
-                signals.new_prediction.connect(
-                    self.evaluator.on_new_prediction)
-                signals.datagroup_finished.connect(
-                    self.evaluator.on_datagroup_finished)
-            else:
-                # We assume that if it's not an evaluation listener, it must
-                # be a prediction listener
-                listener = prediction_listeners[name]
-                signals.new_prediction.connect(listener.on_new_prediction)
-
-            signals.datagroup_finished.connect(listener.on_datagroup_finished)
-            signals.dataset_finished.connect(listener.on_dataset_finished)
-            signals.run_finished.connect(listener.on_run_finished)
-
-            log.logger.debug("Added listener for '%s'" % output)
-
         # The following loop actually executes the predictors
         for predictorname, scoresheet in self.predictions:
+            log.debug("Predictor '%s' yields %d predictions",
+                      predictorname, len(scoresheet))
+            smokesignal.emit('prediction_finished',
+                             scoresheet=scoresheet,
+                             dataset=self.label,
+                             predictor=predictorname)
 
-            log.logger.debug("Predictor '%s' yields %d predictions" % (
-                predictorname, len(scoresheet)))
-
-            for prediction in scoresheet.successive_sets(n=steps):
-                signals.new_prediction.send(sender=self, prediction=prediction,
-                                            dataset=self.label,
-                                            predictor=predictorname)
-            signals.datagroup_finished.send(sender=self, dataset=self.label,
-                                            predictor=predictorname)
-
-        signals.dataset_finished.send(sender=self, dataset=self.label)
-        signals.run_finished.send(sender=self)
-        log.logger.info("Prediction run finished")
+        smokesignal.emit('dataset_finished', dataset=self.label)
+        smokesignal.emit('run_finished')
+        log.info("Prediction run finished")

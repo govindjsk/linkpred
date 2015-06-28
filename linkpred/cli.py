@@ -1,19 +1,21 @@
 """CLI handling"""
 import argparse
 import json
+import logging
 
 from .exceptions import LinkPredError
 from .predictors import all_predictors
-from .util import log
 
-__all__ = ["load_profile", "get_profile", "handle_arguments"]
+log = logging.getLogger(__name__)
+
+__all__ = ["load_profile", "get_config", "handle_arguments"]
 
 
 def load_profile(fname):
     """Load the JSON or YAML profile with the given filename"""
     try:
         with open(fname) as f:
-            if fname.endswith(".yaml"):
+            if fname.endswith(".yaml") or fname.endswith(".yml"):
                 import yaml
                 return yaml.safe_load(f)
             else:
@@ -23,29 +25,34 @@ def load_profile(fname):
                             "Error message: '%s'" % (fname, e))
 
 
-def get_profile():
-    """Load profile based on command-line arguments and options"""
-    args = handle_arguments()
+def get_config(args=None):
+    """Get configuration as supplied by the user
 
-    profilename = args.pop('profile')
+    If a YAML-or JSON-based profile is supplied, any settinsg therein take
+    priority over command-line arguments.
 
-    profile = {}
+    """
+    args = handle_arguments(args)
+
+    profile = args.pop('profile')
+
+    config = {}
     predictorlist = [{'name': predictor} for predictor
                      in args.pop('predictors')]
-    profile['predictors'] = predictorlist
-    profile.update(args)
+    config['predictors'] = predictorlist
+    config.update(args)
 
-    if profilename:
-        profile.update(load_profile(profilename))
+    if profile:
+        config.update(load_profile(profile))
 
-    return profile
+    return config
 
 
-def handle_arguments():
+def handle_arguments(args=None):
     """Get nice CLI interface and return arguments."""
 
     parser = argparse.ArgumentParser(
-        version="0.1", description="Easy link prediction tool",
+        description="Easy link prediction tool",
         usage="%(prog)s training-file [test-file] [options]")
 
     group = parser.add_mutually_exclusive_group()
@@ -80,24 +87,23 @@ def handle_arguments():
 
     all_help = "Predict all links, "\
                "including ones present in the training network"
-    parser.add_argument("-a", "--all", action="store_false", dest="only_new",
-                        default=True, help=all_help)
+    parser.add_argument("-a", "--all", action="store_const", dest="exclude",
+                        const="", default="old", help=all_help)
 
     parser.add_argument("-P", "--profile", help="JSON/YAML profile file")
 
-    parser.add_argument("training-file", help="File with the training network",
-                        type=argparse.FileType())
-    parser.add_argument("test-file", nargs="?", type=argparse.FileType(),
+    parser.add_argument("training-file", help="File with the training network")
+    parser.add_argument("test-file", nargs="?",
                         help="File with the test network")
 
-    results = parser.parse_args()
+    results = parser.parse_args(args)
 
     if results.debug:
-        log.logger.setLevel(log.logging.DEBUG)
+        log.setLevel(logging.DEBUG)
     elif results.quiet:
-        log.logger.setLevel(log.logging.WARNING)
+        log.setLevel(logging.WARNING)
     else:
-        log.logger.setLevel(log.logging.INFO)
+        log.setLevel(logging.INFO)
 
     # Return as plain dictionary
     return vars(results)

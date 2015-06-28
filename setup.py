@@ -20,7 +20,10 @@ setup(
         'matplotlib>=1.1',
         'networkx>=1.7',
         'numpy>=1.6',
-        'scipy>=0.10'
+        'pyyaml>=3.0',
+        'scipy>=0.10',
+        'six>=1.9.0',
+        'smokesignal==0.7',
     ],
     author_email='raf.guns@uantwerpen.be',
     description='Python package for link prediction',
@@ -28,18 +31,14 @@ setup(
     packages=[
         'linkpred',
         'linkpred.evaluation',
-        'linkpred.external',
-        'linkpred.external.dispatch',
         'linkpred.network',
         'linkpred.predictors',
-        'linkpred.util'
     ],
     package_data={
         'linkpred': ['tests/*.py'],
         'linkpred.evaluation': ['tests/*.py'],
         'linkpred.network': ['tests/*.py'],
         'linkpred.predictors': ['tests/*.py'],
-        'linkpred.util': ['tests/*.py']
     },
     platforms='any',
     classifiers=[
@@ -47,6 +46,7 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.4',
         'Topic :: Software Development',
         'Topic :: Scientific/Engineering',
         'Development Status :: 4 - Beta',

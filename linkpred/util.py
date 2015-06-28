@@ -1,32 +1,10 @@
-import re
+import itertools
 import sys
 
 
-def all_pairs(l):
-    """Return list of all possible pairs in l"""
-    try:
-        from itertools import combinations
-        return combinations(l, 2)
-    except ImportError:
-        return (tuple(sorted((x, y))) for i, x in enumerate(l, start=1)
-                for y in l[:i] if x != y)
-
-
-def slugify(value):
-    """
-    Normalize string to 'slug'
-
-    Converts to lowercase, removes non-alpha characters,
-    and converts spaces to hyphens.
-
-    Taken from http://stackoverflow.com/questions/295135/turn-a-string-into-a-valid-filename-in-python/295466#295466
-
-    """
-    import unicodedata
-    value = unicodedata.normalize(
-        'NFKD', unicode(value)).encode('ascii', 'ignore')
-    value = unicode(re.sub('[^\w\s-]', '', value).strip().lower())
-    return unicode(re.sub('[-\s]+', '-', value))
+def all_pairs(iterable):
+    """Return iterator over all possible pairs in l"""
+    return itertools.combinations(iterable, 2)
 
 
 def progressbar(it, prefix="", size=60):
@@ -69,23 +47,12 @@ def load_function(full_functionname):
     return function
 
 
-def ensure_dir(fname):
-    """Make sure all the intermediate directories exist for given file name"""
-    import os
-
-    d = os.path.dirname(fname)
-    if not os.path.isdir(d):
-        os.makedirs(d)
-
-
-def interpolate(l):
-    """Make curve l decrease."""
-    l.reverse()
-    for i in xrange(len(l) - 1):
-        if l[i] >= l[i + 1]:
-            l[i + 1] = l[i]
-    l.reverse()
-    return l
+def interpolate(curve):
+    """Make curve decrease."""
+    for i in range(-1, -len(curve), - 1):
+        if curve[i] > curve[i - 1]:
+            curve[i - 1] = curve[i]
+    return curve
 
 
 def itersubclasses(cls, _seen=None):

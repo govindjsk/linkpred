@@ -6,6 +6,13 @@ linkpred
 While some predictors are fairly straightforward (e.g., if two people have a large number of mutual friends, it seems likely that eventually they will meet and become friends), others are more involved.
 
 
+.. image:: https://travis-ci.org/rafguns/linkpred.svg?branch=master
+    :target: https://travis-ci.org/rafguns/linkpred
+
+.. image:: https://coveralls.io/repos/rafguns/linkpred/badge.svg?branch=master
+    :target: https://coveralls.io/r/rafguns/linkpred?branch=master
+
+
 Example
 -------
 
@@ -17,7 +24,8 @@ Example
     11:49:00 - INFO - Successfully read file.
     >>> len(G)   # number of nodes
     632
-    >>> simrank = linkpred.predictors.SimRank(G, only_new=True)
+    >>> # We exclude edges already present, to predict only new links
+    >>> simrank = linkpred.predictors.SimRank(G, excluded=G.edges())
     >>> simrank_results = simrank.predict(c=0.5)
     >>> top = simrank_results.top(5)
     >>> for authors, score in top.items():

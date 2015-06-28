@@ -1,3 +1,5 @@
+import six
+
 from ..evaluation import Scoresheet
 from ..util import all_pairs
 from .base import Predictor
@@ -12,13 +14,21 @@ class Community(Predictor):
         """Predict using community structure
 
         If two nodes belong to the same community, they are predicted to form
-        a link. This uses the Louvain alogorithm, which detrmines communities
+        a link. This uses the Louvain algorithm, which determines communities
         at different granularity levels: the finer grained the community, the
         higher the resulting score.
 
+        You'll need to install Thomas Aynaud's python-louvain package from
+        https://bitbucket.org/taynaud/python-louvain for this.
+
         """
+        try:
+            from community import generate_dendogram, partition_at_level
+        except ImportError:
+            raise ImportError("Module 'community' could not be found. "
+                              "Please install python-louvain from "
+                              "https://bitbucket.org/taynaud/python-louvain")
         from collections import defaultdict
-        from linkpred.network import generate_dendogram, partition_at_level
 
         res = Scoresheet()
         dendogram = generate_dendogram(self.G)
@@ -28,9 +38,9 @@ class Community(Predictor):
             communities = defaultdict(list)
             weight = len(dendogram) - i  # Lower i, smaller communities
 
-            for n, com in partition.iteritems():
+            for n, com in six.iteritems(partition):
                 communities[com].append(n)
-            for nodes in communities.itervalues():
+            for nodes in six.itervalues(communities):
                 for u, v in all_pairs(nodes):
                     if not self.eligible(u, v):
                         continue
@@ -45,7 +55,8 @@ class Copy(Predictor):
         If weights are used, the likelihood score is equal to the link weight.
 
         This predictor is mostly intended as a sort of baseline. By definition,
-        it only yields predictions if `only_new` is set to False.
+        it only yields predictions if we do not exclude links from the training
+        network (with `excluded`).
 
         Parameters
         ----------
