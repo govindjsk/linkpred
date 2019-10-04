@@ -1,6 +1,3 @@
-import random
-from collections import defaultdict
-
 from ..evaluation import Scoresheet
 from ..util import all_pairs
 from .base import Predictor
@@ -19,23 +16,23 @@ class Community(Predictor):
         at different granularity levels: the finer grained the community, the
         higher the resulting score.
 
-        This needs the python-louvain package. Install linkpred as follows:
-
-        $ pip install linkpred[community]
+        You'll need to install Thomas Aynaud's python-louvain package from
+        https://bitbucket.org/taynaud/python-louvain for this.
 
         """
         try:
-            import community
+            from community import generate_dendrogram as generate_dendogram, partition_at_level
         except ImportError:
             raise ImportError("Module 'community' could not be found. "
-                              "Please install linkpred as follows:\n"
-                              "$ pip install linkpred[community]")
+                              "Please install python-louvain from "
+                              "https://bitbucket.org/taynaud/python-louvain")
+        from collections import defaultdict
 
         res = Scoresheet()
-        dendogram = community.generate_dendrogram(self.G)
+        dendogram = generate_dendogram(self.G)
 
         for i in range(len(dendogram)):
-            partition = community.partition_at_level(dendogram, i)
+            partition = partition_at_level(dendogram, i)
             communities = defaultdict(list)
             weight = len(dendogram) - i  # Lower i, smaller communities
 
@@ -79,6 +76,8 @@ class Random(Predictor):
         This predictor can be used as a baseline.
 
         """
+        import random
+
         res = Scoresheet()
         for a, b in all_pairs(self.eligible_nodes()):
             res[(a, b)] = random.random()

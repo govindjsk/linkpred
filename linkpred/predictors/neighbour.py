@@ -145,7 +145,7 @@ class DegreeProduct(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in all_pairs(self.eligible_nodes()):
+        for a, b in self.likely_pairs():
             w = neighbourhood_size(self.G, a, weight) *\
                 neighbourhood_size(self.G, b, weight)
             if w >= minimum:

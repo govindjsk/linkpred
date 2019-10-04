@@ -31,7 +31,7 @@ class Predictor(object):
 
     """
 
-    def __init__(self, G, eligible=None, excluded=None):
+    def __init__(self, G, eligible=None, excluded=None, strictly_included=None):
         """
         Initialize predictor
 
@@ -55,6 +55,7 @@ class Predictor(object):
         self.eligible_attr = eligible
         self.name = self.__class__.__name__
         self.excluded = [] if excluded is None else excluded
+        self.strictly_included = strictly_included
 
         # Add a decorator to predict(), to do the necessary postprocessing for
         # filtering out links if `excluded` is not empty. We do this in
@@ -121,13 +122,16 @@ class Predictor(object):
             consists of all nodes that are two links away)
 
         """
-        for a in self.G.nodes():
-            if not self.eligible_node(a):
-                continue
-            for b in neighbourhood(self.G, a, k):
-                if not self.eligible_node(b):
+        if not self.strictly_included:
+            for a in self.G.nodes():
+                if not self.eligible_node(a):
                     continue
-                yield (a, b)
+                for b in neighbourhood(self.G, a, k):
+                    if not self.eligible_node(b):
+                        continue
+                    yield (a, b)
+        else:
+            return self.strictly_included
 
 
 def all_predictors():
