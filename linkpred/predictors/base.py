@@ -1,3 +1,4 @@
+from linkpred.util import all_pairs
 from .util import neighbourhood
 
 __all__ = ["Predictor",
@@ -111,6 +112,17 @@ class Predictor(object):
         """
         return [v for v in self.G if self.eligible_node(v)]
 
+    def strictly_included_pairs(self):
+        if not self.strictly_included:
+            eligible_pairs = all_pairs(self.eligible_nodes())
+            for u, v in eligible_pairs:
+                yield (u, v)
+        else:
+            for u, v in self.strictly_included:
+                if not self.eligible(u, v):
+                    continue
+                yield (u, v)
+
     def likely_pairs(self, k=2):
         """
         Yield node pairs from the same neighbourhood
@@ -122,16 +134,13 @@ class Predictor(object):
             consists of all nodes that are two links away)
 
         """
-        if not self.strictly_included:
-            for a in self.G.nodes():
-                if not self.eligible_node(a):
+        for a in self.G.nodes():
+            if not self.eligible_node(a):
+                continue
+            for b in neighbourhood(self.G, a, k):
+                if not self.eligible_node(b):
                     continue
-                for b in neighbourhood(self.G, a, k):
-                    if not self.eligible_node(b):
-                        continue
-                    yield (a, b)
-        else:
-            return self.strictly_included
+                yield (a, b)
 
 
 def all_predictors():

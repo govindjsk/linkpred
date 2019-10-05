@@ -31,7 +31,7 @@ class AdamicAdar(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             intersection = set(neighbourhood(self.G, a)) & \
                 set(neighbourhood(self.G, b))
             w = 0
@@ -59,7 +59,7 @@ class AssociationStrength(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             w = neighbourhood_intersection_size(self.G, a, b, weight) / \
                 (neighbourhood_size(self.G, a, weight) *
                  neighbourhood_size(self.G, b, weight))
@@ -92,7 +92,7 @@ class CommonNeighbours(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             if weight is None or alpha == 0.0:
                 w = neighbourhood_intersection_size(self.G, a, b, weight=None)
             elif alpha == 1.0:
@@ -120,7 +120,7 @@ class Cosine(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             w = neighbourhood_intersection_size(self.G, a, b, weight) / \
                 math.sqrt(neighbourhood_size(self.G, a, weight) *
                           neighbourhood_size(self.G, b, weight))
@@ -145,7 +145,7 @@ class DegreeProduct(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             w = neighbourhood_size(self.G, a, weight) *\
                 neighbourhood_size(self.G, b, weight)
             if w >= minimum:
@@ -165,7 +165,7 @@ class Jaccard(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             # Best performance: weighted numerator, unweighted denominator.
             numerator = neighbourhood_intersection_size(self.G, a, b, weight)
             denominator = neighbourhood_union_size(self.G, a, b, weight)
@@ -189,7 +189,7 @@ class NMeasure(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             w = math.sqrt(2) *\
                 neighbourhood_intersection_size(self.G, a, b, weight) / \
                 math.sqrt(neighbourhood_size(self.G, a, weight) ** 2 +
@@ -201,7 +201,7 @@ class NMeasure(Predictor):
 
 def _predict_overlap(predictor, function, weight=None):
     res = Scoresheet()
-    for a, b in predictor.likely_pairs():
+    for a, b in predictor.strictly_included_pairs():
         # Best performance: weighted numerator, unweighted denominator.
         numerator = neighbourhood_intersection_size(predictor.G, a, b, weight)
         denominator = function(neighbourhood_size(predictor.G, a, weight),
@@ -255,7 +255,7 @@ class Pearson(Predictor):
         # 'Full' Pearson looks at all possible pairs. Since those are likely
         # of little value for link prediction, we restrict ourselves to pairs
         # with at least one common neighbour.
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             n = len(self.G)
             a_l2norm = neighbourhood_size(self.G, a, weight)
             b_l2norm = neighbourhood_size(self.G, b, weight)
@@ -288,7 +288,7 @@ class ResourceAllocation(Predictor):
 
         """
         res = Scoresheet()
-        for a, b in self.likely_pairs():
+        for a, b in self.strictly_included_pairs():
             intersection = set(neighbourhood(self.G, a)) & \
                 set(neighbourhood(self.G, b))
             w = 0

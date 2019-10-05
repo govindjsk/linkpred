@@ -1,7 +1,8 @@
 import networkx as nx
+from tqdm import tqdm_notebook
 
 from ..evaluation import Scoresheet
-from ..util import progressbar
+from ..util import progressbar, all_pairs
 from .base import Predictor
 
 __all__ = ["GraphDistance", "Katz"]
@@ -46,15 +47,24 @@ class GraphDistance(Predictor):
             G.add_weighted_edges_from((u, v, 1 / d[weight] ** alpha) for
                                       u, v, d in self.G.edges(data=True))
 
-        dist = nx.shortest_path_length(G, weight=weight)
-        for a, others in dist:
-            if not self.eligible_node(a):
+        # dist = nx.shortest_path_length(G, weight=weight)
+        print('Roger that!')  # A sign that these changes have been acknowledged
+        eligible_nodes = self.eligible_nodes()
+        eligible_pairs = all_pairs(eligible_nodes)
+        for a, b in tqdm_notebook(eligible_pairs):
+            if a == b:
                 continue
-            for b, length in others.items():
-                if a == b or not self.eligible_node(b):
-                    continue
-                w = 1 / length
-                res[(a, b)] = w
+            length = nx.shortest_path_length(G, a, b, weight=weight)
+            w = 1 / length
+            res[(a, b)] = w
+        # for a, others in dist:
+        #     if not self.eligible_node(a):
+        #         continue
+        #     for b, length in others.items():
+        #         if a == b or not self.eligible_node(b):
+        #             continue
+        #         w = 1 / length
+        #         res[(a, b)] = w
         return res
 
 
