@@ -1,4 +1,4 @@
-from linkpred.util import all_pairs
+from ..util import all_pairs
 from .util import neighbourhood
 
 __all__ = ["Predictor",
