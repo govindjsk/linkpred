@@ -3,7 +3,7 @@ import math
 from ..evaluation import Scoresheet
 from ..util import all_pairs
 from .base import Predictor
-from .util import neighbourhood, neighbourhood_size,\
+from .util import neighbourhood, neighbourhood_size, \
     neighbourhood_intersection_size, neighbourhood_union_size
 
 __all__ = ["AdamicAdar",
@@ -33,18 +33,18 @@ class AdamicAdar(Predictor):
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
             intersection = set(neighbourhood(self.G, a)) & \
-                set(neighbourhood(self.G, b))
+                           set(neighbourhood(self.G, b))
             w = 0
             for c in intersection:
                 if weight is not None:
                     numerator = self.G[a][c][weight] * self.G[b][c][weight]
                 else:
                     numerator = 1
-                    
-                denominator = math.log(neighbourhood_size(self.G, c, weight)) 
-                if (denominator>0):
+
+                denominator = math.log(neighbourhood_size(self.G, c, weight))
+                if denominator > 0:
                     w += numerator / \
-                    denominator
+                         denominator
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -63,13 +63,13 @@ class AssociationStrength(Predictor):
         """
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
-            denominator =(neighbourhood_size(self.G, a, weight) * neighbourhood_size(self.G, b, weight))
-            if (denominator > 0):   
+            denominator = (neighbourhood_size(self.G, a, weight) * neighbourhood_size(self.G, b, weight))
+            if (denominator > 0):
                 w = neighbourhood_intersection_size(self.G, a, b, weight) / \
                     denominator
             else:
-                w=0
-                    
+                w = 0
+
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -128,12 +128,12 @@ class Cosine(Predictor):
         """
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
-            denominator=math.sqrt(neighbourhood_size(self.G, a, weight) *
-                          neighbourhood_size(self.G, b, weight))
-            if (denominator > 0) :             
+            denominator = math.sqrt(neighbourhood_size(self.G, a, weight) *
+                                    neighbourhood_size(self.G, b, weight))
+            if (denominator > 0):
                 w = neighbourhood_intersection_size(self.G, a, b, weight) / \
-                denominator 
-                
+                    denominator
+
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -156,7 +156,7 @@ class DegreeProduct(Predictor):
         """
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
-            w = neighbourhood_size(self.G, a, weight) *\
+            w = neighbourhood_size(self.G, a, weight) * \
                 neighbourhood_size(self.G, b, weight)
             if w >= minimum:
                 res[(a, b)] = w
@@ -179,7 +179,7 @@ class Jaccard(Predictor):
             # Best performance: weighted numerator, unweighted denominator.
             numerator = neighbourhood_intersection_size(self.G, a, b, weight)
             denominator = neighbourhood_union_size(self.G, a, b, weight)
-            if (denominator>0):
+            if (denominator > 0):
                 w = numerator / denominator
             if w > 0:
                 res[(a, b)] = w
@@ -201,12 +201,12 @@ class NMeasure(Predictor):
         """
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
-            denominator=math.sqrt(neighbourhood_size(self.G, a, weight) ** 2 +
-                          neighbourhood_size(self.G, b, weight) ** 2)
-            if (denominator >0):
-                w = math.sqrt(2) *\
-                neighbourhood_intersection_size(self.G, a, b, weight) / \
-                denominator
+            denominator = math.sqrt(neighbourhood_size(self.G, a, weight) ** 2 +
+                                    neighbourhood_size(self.G, b, weight) ** 2)
+            if (denominator > 0):
+                w = math.sqrt(2) * \
+                    neighbourhood_intersection_size(self.G, a, b, weight) / \
+                    denominator
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -279,8 +279,8 @@ class Pearson(Predictor):
 
             numerator = (n * intersect) - (a_l1norm * b_l1norm)
             denominator = math.sqrt(n * a_l2norm - a_l1norm ** 2) * \
-                math.sqrt(n * b_l2norm - b_l1norm ** 2)
-            if (denominator >0):
+                          math.sqrt(n * b_l2norm - b_l1norm ** 2)
+            if (denominator > 0):
                 w = numerator / denominator
             if w > 0:
                 res[(a, b)] = w
@@ -304,7 +304,7 @@ class ResourceAllocation(Predictor):
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
             intersection = set(neighbourhood(self.G, a)) & \
-                set(neighbourhood(self.G, b))
+                           set(neighbourhood(self.G, b))
             w = 0
             for c in intersection:
                 if weight is not None:
@@ -312,8 +312,8 @@ class ResourceAllocation(Predictor):
                                       self.G[b][c][weight])
                 else:
                     numerator = 1
-                denominator=neighbourhood_size(self.G, c, weight)
-                if (denominator>0):
+                denominator = neighbourhood_size(self.G, c, weight)
+                if (denominator > 0):
                     w += numerator / neighbourhood_size(self.G, c, weight)
             if w > 0:
                 res[(a, b)] = w
