@@ -40,8 +40,11 @@ class AdamicAdar(Predictor):
                     numerator = self.G[a][c][weight] * self.G[b][c][weight]
                 else:
                     numerator = 1
-                w += numerator / \
-                    math.log(neighbourhood_size(self.G, c, weight))
+                    
+                denominator = math.log(neighbourhood_size(self.G, c, weight)) 
+                if (denominator>0):
+                    w += numerator / \
+                    denominator
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -60,9 +63,13 @@ class AssociationStrength(Predictor):
         """
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
-            w = neighbourhood_intersection_size(self.G, a, b, weight) / \
-                (neighbourhood_size(self.G, a, weight) *
-                 neighbourhood_size(self.G, b, weight))
+            denominator =(neighbourhood_size(self.G, a, weight) * neighbourhood_size(self.G, b, weight))
+            if (denominator > 0):   
+                w = neighbourhood_intersection_size(self.G, a, b, weight) / \
+                    denominator
+            else:
+                w=0
+                    
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -121,9 +128,12 @@ class Cosine(Predictor):
         """
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
-            w = neighbourhood_intersection_size(self.G, a, b, weight) / \
-                math.sqrt(neighbourhood_size(self.G, a, weight) *
+            denominator=math.sqrt(neighbourhood_size(self.G, a, weight) *
                           neighbourhood_size(self.G, b, weight))
+            if (denominator > 0) :             
+                w = neighbourhood_intersection_size(self.G, a, b, weight) / \
+                denominator 
+                
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -169,7 +179,8 @@ class Jaccard(Predictor):
             # Best performance: weighted numerator, unweighted denominator.
             numerator = neighbourhood_intersection_size(self.G, a, b, weight)
             denominator = neighbourhood_union_size(self.G, a, b, weight)
-            w = numerator / denominator
+            if (denominator>0):
+                w = numerator / denominator
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -190,10 +201,12 @@ class NMeasure(Predictor):
         """
         res = Scoresheet()
         for a, b in self.strictly_included_pairs():
-            w = math.sqrt(2) *\
-                neighbourhood_intersection_size(self.G, a, b, weight) / \
-                math.sqrt(neighbourhood_size(self.G, a, weight) ** 2 +
+            denominator=math.sqrt(neighbourhood_size(self.G, a, weight) ** 2 +
                           neighbourhood_size(self.G, b, weight) ** 2)
+            if (denominator >0):
+                w = math.sqrt(2) *\
+                neighbourhood_intersection_size(self.G, a, b, weight) / \
+                denominator
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -206,7 +219,8 @@ def _predict_overlap(predictor, function, weight=None):
         numerator = neighbourhood_intersection_size(predictor.G, a, b, weight)
         denominator = function(neighbourhood_size(predictor.G, a, weight),
                                neighbourhood_size(predictor.G, b, weight))
-        w = numerator / denominator
+        if (denominator > 0):
+            w = numerator / denominator
         if w > 0:
             res[(a, b)] = w
     return res
@@ -266,8 +280,8 @@ class Pearson(Predictor):
             numerator = (n * intersect) - (a_l1norm * b_l1norm)
             denominator = math.sqrt(n * a_l2norm - a_l1norm ** 2) * \
                 math.sqrt(n * b_l2norm - b_l1norm ** 2)
-
-            w = numerator / denominator
+            if (denominator >0):
+                w = numerator / denominator
             if w > 0:
                 res[(a, b)] = w
         return res
@@ -298,7 +312,9 @@ class ResourceAllocation(Predictor):
                                       self.G[b][c][weight])
                 else:
                     numerator = 1
-                w += numerator / neighbourhood_size(self.G, c, weight)
+                denominator=neighbourhood_size(self.G, c, weight)
+                if (denominator>0):
+                    w += numerator / neighbourhood_size(self.G, c, weight)
             if w > 0:
                 res[(a, b)] = w
         return res
