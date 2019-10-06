@@ -48,13 +48,15 @@ class GraphDistance(Predictor):
                                       u, v, d in self.G.edges(data=True))
 
         # dist = nx.shortest_path_length(G, weight=weight)
-        print('Roger that!')  # A sign that these changes have been acknowledged
         eligible_nodes = self.eligible_nodes()
         eligible_pairs = all_pairs(eligible_nodes)
         for a, b in tqdm_notebook(eligible_pairs):
             if a == b:
                 continue
-            length = nx.shortest_path_length(G, a, b, weight=weight)
+            try:
+                length = nx.shortest_path_length(G, a, b, weight=weight)
+            except nx.exception.NetworkXNoPath:
+                length = float('Inf')
             w = 1 / length
             res[(a, b)] = w
         # for a, others in dist:
