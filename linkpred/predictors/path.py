@@ -9,7 +9,7 @@ __all__ = ["GraphDistance", "Katz"]
 
 
 class GraphDistance(Predictor):
-    def predict(self, weight='weight', alpha=1):
+    def predict(self, weight=None, alpha=1):
         r"""Predict by graph distance
 
         This is based on the dissimilarity measures of Egghe & Rousseau (2003):
